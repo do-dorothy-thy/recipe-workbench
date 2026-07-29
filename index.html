@@ -697,20 +697,25 @@ function renderPlans() {
     return;
   }
   tbody.innerHTML = sorted.map(p => {
-    const r = rm[p['关联菜谱']];
-    return `<tr><td><strong>${esc(p['星期'])}</strong></td><td>${esc(p['餐次'])}</td><td>${r?esc(r['菜谱名称']):'<span class="text-muted">(已删除)</span>'}</td><td>${planStatusTag(p['是否选定'])}</td><td>${esc(p['采购备注']||'—')}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="showPlanForm('${p.id}')">✏️</button><button class="btn btn-sm btn-danger" onclick="deletePlan('${p.id}')">🗑</button></td></tr>`;
+    const ids = Array.isArray(p['关联菜谱']) ? p['关联菜谱'] : [p['关联菜谱']];
+    const names = ids.map(id => rm[id] ? esc(rm[id]['菜谱名称']) : '<span class="text-muted">(已删除)</span>').join('、');
+    return `<tr><td><strong>${esc(p['星期'])}</strong></td><td>${esc(p['餐次'])}</td><td>${names||'<span class="text-muted">—</span>'}</td><td>${planStatusTag(p['是否选定'])}</td><td>${esc(p['采购备注']||'—')}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="showPlanForm('${p.id}')">✏️</button><button class="btn btn-sm btn-danger" onclick="deletePlan('${p.id}')">🗑</button></td></tr>`;
   }).join('');
   cards.innerHTML = sorted.map(p => {
-    const r = rm[p['关联菜谱']];
+    const ids = Array.isArray(p['关联菜谱']) ? p['关联菜谱'] : [p['关联菜谱']];
+    const recipesInPlan = ids.map(id => rm[id]).filter(Boolean);
+    const firstImg = recipesInPlan[0]?.['菜谱图片'];
+    const allNames = recipesInPlan.map(r => r['菜谱名称']).join('、');
     return `<div class="recipe-card"><div class="recipe-card-body">
       <div class="recipe-card-header">
-        ${r?.['菜谱图片']?`<img class="recipe-card-img" src="${esc(r['菜谱图片'])}">`:'<div class="recipe-card-img-placeholder">🍽️</div>'}
+        ${firstImg?`<img class="recipe-card-img" src="${esc(firstImg)}">`:'<div class="recipe-card-img-placeholder">🍽️</div>'}
         <div class="recipe-card-info"><h4>${esc(p['星期'])} ${esc(p['餐次'])}</h4>
-          <div class="recipe-card-meta">${planStatusTag(p['是否选定'])}<span class="text-muted">${r?esc(r['菜谱名称']):'(已删除)'}</span></div>
+          <div class="recipe-card-meta">${planStatusTag(p['是否选定'])}<span class="text-muted">${ids.length}道菜</span></div>
+          <div style="font-size:13px;margin-top:4px">${allNames||'<span class="text-muted">(无)</span>'}</div>
           ${p['采购备注']?`<div class="recipe-card-detail"><strong>采购：</strong>${esc(p['采购备注'])}</div>`:''}
         </div>
       </div>
-      <div class="recipe-card-actions"><button class="btn btn-sm" onclick="showPlanForm('${p.id}')">✏️</button><button class="btn btn-sm btn-danger" onclick="deletePlan('${p.id}')">🗑</button></div>
+      <div class="recipe-card-actions"><button class="btn btn-sm" onclick="showPlanForm('${p.id}')">✏️ 编辑</button><button class="btn btn-sm btn-danger" onclick="deletePlan('${p.id}')">🗑 删除</button></div>
     </div></div>`;
   }).join('');
 }
@@ -776,7 +781,10 @@ function saveRecipe(editId) {
 function deleteRecipe(id) {
   if (!confirm('确定删除？')) return;
   saveRecipes(loadRecipes().filter(r => r.id !== id));
-  savePlans(loadPlans().filter(p => p['关联菜谱'] !== id));
+  savePlans(loadPlans().filter(p => {
+    const ids = Array.isArray(p['关联菜谱']) ? p['关联菜谱'] : [p['关联菜谱']];
+    return !ids.includes(id);
+  }));
   showToast('已删除'); renderCurrentView();
 }
 
@@ -786,14 +794,16 @@ function deleteRecipe(id) {
 function showPlanForm(editId) {
   const plans = loadPlans(), recipes = loadRecipes();
   const plan = editId ? plans.find(p => p.id === editId) : null;
-  const opts = recipes.map(r => `<option value="${r.id}" ${plan&&plan['关联菜谱']===r.id?'selected':''}>${esc(r['菜谱名称'])}</option>`).join('');
-  const body = `<div class="form-row"><div class="form-group"><label>星期<span class="req">*</span></label><select id="plan-wd">${['周一','周二','周三','周四','周五','周六','周日'].map(d => `<option value="${d}" ${plan&&plan['星期']===d?'selected':''}>${d}</option>`).join('')}</select></div><div class="form-group"><label>餐次<span class="req">*</span></label><select id="plan-meal"><option value="午餐" ${plan&&plan['餐次']==='午餐'?'selected':''}>午餐</option><option value="晚餐" ${plan&&plan['餐次']==='晚餐'?'selected':''}>晚餐</option></select></div></div><div class="form-row"><div class="form-group"><label>关联菜谱<span class="req">*</span></label><select id="plan-recipe">${opts}</select></div><div class="form-group"><label>是否选定</label><select id="plan-status"><option value="待投票选择" ${plan&&plan['是否选定']==='待投票选择'?'selected':''}>待投票选择</option><option value="✅确定吃这个" ${plan&&plan['是否选定']==='✅确定吃这个'?'selected':''}>✅确定吃这个</option><option value="排除" ${plan&&plan['是否选定']==='排除'?'selected':''}>排除</option></select></div></div><div class="form-group"><label>采购备注</label><textarea id="plan-note" rows="3">${esc(plan?.['采购备注']||'')}</textarea></div>`;
+  const selectedIds = plan ? (Array.isArray(plan['关联菜谱']) ? plan['关联菜谱'] : [plan['关联菜谱']]) : [];
+  const checkboxes = recipes.map(r => `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer"><input type="checkbox" value="${r.id}" class="plan-recipe-check" ${selectedIds.includes(r.id)?'checked':''}> ${esc(r['菜谱名称'])} <span class="text-muted">${esc(r['菜系'])} · ${r['预计耗时(分钟)']}分钟</span></label>`).join('');
+  const body = `<div class="form-row"><div class="form-group"><label>星期<span class="req">*</span></label><select id="plan-wd">${['周一','周二','周三','周四','周五','周六','周日'].map(d => `<option value="${d}" ${plan&&plan['星期']===d?'selected':''}>${d}</option>`).join('')}</select></div><div class="form-group"><label>餐次<span class="req">*</span></label><select id="plan-meal"><option value="午餐" ${plan&&plan['餐次']==='午餐'?'selected':''}>午餐</option><option value="晚餐" ${plan&&plan['餐次']==='晚餐'?'selected':''}>晚餐</option></select></div></div><div class="form-group"><label>关联菜谱<span class="req">*</span>（可多选）</label><div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px">${checkboxes}</div></div><div class="form-group"><label>是否选定</label><select id="plan-status"><option value="待投票选择" ${plan&&plan['是否选定']==='待投票选择'?'selected':''}>待投票选择</option><option value="✅确定吃这个" ${plan&&plan['是否选定']==='✅确定吃这个'?'selected':''}>✅确定吃这个</option><option value="排除" ${plan&&plan['是否选定']==='排除'?'selected':''}>排除</option></select></div><div class="form-group"><label>采购备注</label><textarea id="plan-note" rows="3">${esc(plan?.['采购备注']||'')}</textarea></div>`;
   openModal(editId?'编辑计划':'添加计划', body, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="savePlan('${editId||''}')">保存</button>`);
 }
 
 function savePlan(editId) {
-  const data = { '星期': document.getElementById('plan-wd').value, '餐次': document.getElementById('plan-meal').value, '关联菜谱': document.getElementById('plan-recipe').value, '是否选定': document.getElementById('plan-status').value, '采购备注': document.getElementById('plan-note').value.trim() };
-  if (!data['关联菜谱']) { showToast('请选择关联菜谱', 'error'); return; }
+  const selectedIds = [...document.querySelectorAll('.plan-recipe-check:checked')].map(cb => cb.value);
+  if (!selectedIds.length) { showToast('请至少选择一道菜谱', 'error'); return; }
+  const data = { '星期': document.getElementById('plan-wd').value, '餐次': document.getElementById('plan-meal').value, '关联菜谱': selectedIds, '是否选定': document.getElementById('plan-status').value, '采购备注': document.getElementById('plan-note').value.trim() };
   const plans = loadPlans();
   if (editId) { const idx = plans.findIndex(p => p.id === editId); if (idx >= 0) { plans[idx] = { ...plans[idx], ...data }; savePlans(plans); showToast('已更新'); } }
   else { plans.push({ id: genId(), ...data }); savePlans(plans); showToast('已添加'); }
